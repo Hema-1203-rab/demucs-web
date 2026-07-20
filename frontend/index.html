@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Demucs 四轨分离</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="workspace" aria-labelledby="app-title">
+        <div class="panel">
+          <header class="header">
+            <div>
+              <p class="eyebrow">本地四轨分离</p>
+              <h1 id="app-title">Demucs 四轨分离</h1>
+            </div>
+            <span id="healthBadge" class="badge">检查中</span>
+          </header>
+
+          <form id="uploadForm" class="upload-form">
+            <label class="file-picker" for="audioFile">
+              <span class="file-main">选择音频文件</span>
+              <span id="fileName" class="file-name">支持 MP3、WAV、FLAC</span>
+              <input id="audioFile" name="file" type="file" accept=".mp3,.wav,.flac,audio/*">
+            </label>
+            <button id="uploadButton" class="primary-button" type="submit">开始分离</button>
+          </form>
+
+          <div id="statusBox" class="status-box" role="status" aria-live="polite">
+            <span id="statusDot" class="status-dot idle"></span>
+            <span id="statusText">等待上传</span>
+          </div>
+
+          <div id="errorBox" class="error-box" hidden></div>
+        </div>
+
+        <section id="results" class="results" aria-label="分离结果"></section>
+      </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
