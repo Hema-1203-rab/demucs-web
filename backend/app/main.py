@@ -11,6 +11,7 @@ from backend.app.config import Settings, settings
 from backend.app.services.demucs_service import DemucsService
 from backend.app.services.file_service import FileService
 from backend.app.services.job_manager import JobManager
+from backend.app.services.mix_service import MixService
 from backend.app.services.separation_worker import SeparationService, SeparationWorker
 
 
@@ -22,7 +23,7 @@ def create_app(
     file_service = FileService(app_settings)
     job_manager = JobManager()
     worker = SeparationWorker(job_manager, separation_service or DemucsService())
-    app.include_router(create_router(app_settings, file_service, job_manager, worker))
+    app.include_router(create_router(app_settings, file_service, job_manager, worker, MixService()))
     app.include_router(create_media_router(file_service))
     frontend_dir = Path("frontend")
     app.mount("/static", StaticFiles(directory=frontend_dir), name="static")

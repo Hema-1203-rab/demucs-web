@@ -7,6 +7,7 @@
 - FastAPI 后端和原生 HTML/CSS/JavaScript 前端。
 - 进程内任务管理器和 `ThreadPoolExecutor(max_workers=1)`。
 - 默认真实服务调用 `python -m demucs -n htdemucs`。
+- 分离成功后可选择一个或多个音轨，用 FFmpeg 生成 WAV 合并音轨。
 - 普通自动化测试使用 fake/mock，不执行真实 Demucs 推理。
 - 不包含数据库、Redis、Celery、登录系统或前端框架。
 
@@ -42,6 +43,8 @@ uvicorn backend.app.main:app --reload
 ```text
 http://127.0.0.1:8000
 ```
+
+分离完成后，页面会继续显示四个独立音轨播放器和下载链接。下方的“合并音轨”区域默认选中四个音轨，可取消任意音轨后点击“生成合并音轨”。后端会使用 FFmpeg `amix` 生成一个 WAV 文件，并在页面中显示单个播放器和“下载合并音轨”链接。
 
 ## 测试
 
@@ -85,6 +88,26 @@ GET /media/{job_id}/{stem}.wav
 ```
 
 `stem` 只能是 `vocals`、`drums`、`bass`、`other`。
+
+生成合并音轨：
+
+```http
+POST /api/jobs/{job_id}/mixes
+Content-Type: application/json
+
+{
+  "stems": ["vocals", "bass"]
+}
+```
+
+响应包含 `stems`、`play_url` 和 `download_url`。合并文件格式为 WAV，存放在对应任务结果目录的 `mixes` 子目录中；同一种音轨组合会按 `vocals`、`drums`、`bass`、`other` 固定顺序复用同一个缓存文件。
+
+合并音轨播放和下载：
+
+```http
+GET /media/{job_id}/mixes/{filename}
+GET /media/{job_id}/mixes/{filename}/download
+```
 
 ## 当前环境提示
 

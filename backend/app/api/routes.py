@@ -8,9 +8,10 @@ from fastapi import APIRouter, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 
 from backend.app.config import Settings
-from backend.app.schemas import CreateJobResponse, HealthResponse, JobResponse, JobStatus
+from backend.app.schemas import CreateJobResponse, HealthResponse, JobResponse, JobStatus, MixRequest, MixResponse
 from backend.app.services.file_service import FileService
 from backend.app.services.job_manager import JobManager, JobRecord
+from backend.app.services.mix_service import MixService, MixServiceError, MixValidationError
 from backend.app.services.separation_worker import SeparationWorker
 
 
@@ -19,8 +20,10 @@ def create_router(
     file_service: FileService,
     job_manager: JobManager,
     worker: SeparationWorker,
+    mix_service: MixService | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api")
+    mixer = mix_service or MixService()
 
     @router.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
@@ -63,6 +66,27 @@ def create_router(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
         return _job_response(record)
 
+    @router.post("/jobs/{job_id}/mixes", response_model=MixResponse)
+    def create_mix(job_id: str, request: MixRequest) -> MixResponse:
+        record = job_manager.get(job_id)
+        if record is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
+        if record.status != JobStatus.succeeded:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="只有分离完成后才能生成合并音轨")
+
+        try:
+            result = mixer.create_mix(file_service.result_dir(job_id), request.stems)
+        except MixValidationError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except MixServiceError as exc:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+
+        return MixResponse(
+            stems=result.stems,
+            play_url=f"/media/{job_id}/mixes/{result.filename}",
+            download_url=f"/media/{job_id}/mixes/{result.filename}/download",
+        )
+
     return router
 
 
@@ -73,6 +97,16 @@ def create_media_router(file_service: FileService) -> APIRouter:
     def get_media(job_id: str, stem: str) -> FileResponse:
         path = file_service.media_file(job_id, stem)
         return FileResponse(path, media_type="audio/wav", filename=f"{stem}.wav")
+
+    @router.get("/media/{job_id}/mixes/{filename}")
+    def get_mix_media(job_id: str, filename: str) -> FileResponse:
+        path = file_service.mix_file(job_id, filename)
+        return FileResponse(path, media_type="audio/wav")
+
+    @router.get("/media/{job_id}/mixes/{filename}/download")
+    def download_mix_media(job_id: str, filename: str) -> FileResponse:
+        path = file_service.mix_file(job_id, filename)
+        return FileResponse(path, media_type="audio/wav", filename=filename)
 
     return router
 
