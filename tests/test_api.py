@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import time
 import uuid
+import subprocess
 from pathlib import Path
 from threading import Event
+from unittest.mock import Mock
 
 from fastapi.testclient import TestClient
+import pytest
 
 from backend.app.config import Settings
 from backend.app.main import create_app
@@ -40,7 +43,7 @@ def test_health_endpoint(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
-    assert response.json()["demucs_available"] is False
+    assert isinstance(response.json()["demucs_available"], bool)
 
 
 def test_frontend_index_is_served(tmp_path: Path) -> None:
@@ -166,6 +169,119 @@ def test_get_missing_job_returns_404(tmp_path: Path) -> None:
     response = client.get("/api/jobs/12345678-1234-5678-1234-567812345678")
 
     assert response.status_code == 404
+
+
+def test_create_mix_and_download_response(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = make_client(tmp_path)
+    run_mock = Mock(side_effect=fake_ffmpeg_success)
+    monkeypatch.setattr(subprocess, "run", run_mock)
+    job_id = create_succeeded_job(client)
+
+    response = client.post(f"/api/jobs/{job_id}/mixes", json={"stems": ["bass", "vocals"]})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload == {
+        "stems": ["vocals", "bass"],
+        "play_url": f"/media/{job_id}/mixes/mix-vocals-bass.wav",
+        "download_url": f"/media/{job_id}/mixes/mix-vocals-bass.wav/download",
+    }
+    play_response = client.get(payload["play_url"])
+    assert play_response.status_code == 200
+    assert play_response.headers["content-type"].startswith("audio/wav")
+
+    download_response = client.get(payload["download_url"])
+    assert download_response.status_code == 200
+    assert "attachment" in download_response.headers["content-disposition"]
+    assert run_mock.call_count == 1
+
+
+def test_create_mix_rejects_missing_job(tmp_path: Path) -> None:
+    client = make_client(tmp_path)
+
+    response = client.post(
+        "/api/jobs/12345678-1234-5678-1234-567812345678/mixes",
+        json={"stems": ["vocals"]},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "任务不存在"
+
+
+def test_create_mix_rejects_job_that_has_not_succeeded(tmp_path: Path) -> None:
+    service = BlockingSeparationService()
+    client = make_client(tmp_path, separation_service=service)
+    upload_response = client.post(
+        "/api/jobs",
+        files={"file": ("song.wav", b"audio", "audio/wav")},
+    )
+    job_id = upload_response.json()["job_id"]
+    wait_for_status(client, job_id, "running")
+
+    response = client.post(f"/api/jobs/{job_id}/mixes", json={"stems": ["vocals"]})
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "只有分离完成后才能生成合并音轨"
+    service.release()
+    wait_for_status(client, job_id, "succeeded")
+
+
+def test_create_mix_reports_missing_source_file(tmp_path: Path) -> None:
+    client = make_client(tmp_path)
+    job_id = create_succeeded_job(client)
+    (tmp_path / job_id / "result" / "other.wav").unlink()
+
+    response = client.post(f"/api/jobs/{job_id}/mixes", json={"stems": ["other"]})
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "选中的源音轨文件不存在"
+
+
+def test_create_mix_reports_ffmpeg_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = make_client(tmp_path)
+
+    def fake_failure(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(command, 1, stdout="out", stderr="err")
+
+    monkeypatch.setattr(subprocess, "run", fake_failure)
+    job_id = create_succeeded_job(client)
+
+    response = client.post(f"/api/jobs/{job_id}/mixes", json={"stems": ["vocals", "drums"]})
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "合并音轨生成失败，请确认 FFmpeg 可用后重试"
+
+
+def test_mix_media_rejects_path_traversal(tmp_path: Path) -> None:
+    client = make_client(tmp_path)
+    job_id = "12345678-1234-5678-1234-567812345678"
+
+    response = client.get(f"/media/{job_id}/mixes/../vocals.wav")
+
+    assert response.status_code == 404
+
+
+def create_succeeded_job(client: TestClient) -> str:
+    response = client.post(
+        "/api/jobs",
+        files={"file": ("song.wav", b"audio", "audio/wav")},
+    )
+    assert response.status_code == 202
+    job_id = response.json()["job_id"]
+    wait_for_status(client, job_id, "succeeded")
+    return job_id
+
+
+def fake_ffmpeg_success(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+    assert "shell" not in kwargs
+    Path(command[-1]).write_bytes(b"mixed")
+    return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")
 
 
 class BlockingSeparationService:

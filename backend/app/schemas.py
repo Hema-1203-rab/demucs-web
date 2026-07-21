@@ -30,3 +30,13 @@ class JobResponse(BaseModel):
     message: str
     outputs: dict[str, str] | None
     error: str | None
+
+
+class MixRequest(BaseModel):
+    stems: list[str]
+
+
+class MixResponse(BaseModel):
+    stems: list[str]
+    play_url: str
+    download_url: str

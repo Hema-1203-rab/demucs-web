@@ -9,6 +9,8 @@ from backend.app.config import Settings
 
 
 ALLOWED_STEMS = frozenset({"vocals", "drums", "bass", "other"})
+MIX_FILENAME_PREFIX = "mix-"
+MIX_FILENAME_SUFFIX = ".wav"
 
 
 class FileService:
@@ -81,6 +83,29 @@ class FileService:
         if not path.is_file():
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media file not found")
         return path
+
+    def mix_file(self, job_id: str, filename: str) -> Path:
+        if not self._is_safe_mix_filename(filename):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mix file not found")
+        mixes_dir = (self.result_dir(job_id) / "mixes").resolve()
+        path = (mixes_dir / filename).resolve()
+        if mixes_dir != path.parent:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid mix path")
+        if not path.is_file():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mix file not found")
+        return path
+
+    def _is_safe_mix_filename(self, filename: str) -> bool:
+        if "/" in filename or "\\" in filename:
+            return False
+        if not filename.startswith(MIX_FILENAME_PREFIX) or not filename.endswith(MIX_FILENAME_SUFFIX):
+            return False
+        selected = filename[len(MIX_FILENAME_PREFIX) : -len(MIX_FILENAME_SUFFIX)].split("-")
+        if not selected or len(selected) > len(ALLOWED_STEMS):
+            return False
+        if len(set(selected)) != len(selected):
+            return False
+        return all(stem in ALLOWED_STEMS for stem in selected)
 
     def _safe_job_root(self, job_id: str) -> Path:
         try:

@@ -183,9 +183,64 @@ h1 {
   padding: 16px;
 }
 
-.track-card h2 {
+.track-card h2,
+.mix-panel h2 {
   margin: 0 0 12px;
   font-size: 18px;
+}
+
+.mix-panel {
+  grid-column: 1 / -1;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.mix-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mix-header h2 {
+  margin-bottom: 0;
+}
+
+.mix-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.mix-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfd;
+  cursor: pointer;
+}
+
+.mix-option input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.mix-message {
+  min-height: 22px;
+  margin: 12px 0 0;
+  color: var(--muted);
+}
+
+.mix-output {
+  margin-top: 12px;
 }
 
 audio {
